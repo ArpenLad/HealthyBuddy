@@ -42,6 +42,9 @@ type Habit = {
   enabled: boolean
 }
 type Logs = Record<string, number>
+type DailyLogs = Record<string, Logs>
+
+const defaultLogs: Logs = { water: 5, steps: 4200, read: 12, sleep: 6.5 }
 
 const initialHabits: Habit[] = [
   { id: 'water', name: 'Drink water', icon: 'droplets', color: 'aqua', goal: 8, unit: 'glasses', schedule: 'Every 2 hours', enabled: true },
@@ -56,9 +59,11 @@ function getToday() { return new Date().toISOString().slice(0, 10) }
 function formatDate() { return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()) }
 
 export default function Page() {
-  const [view, setView] = useState('Today')
+  const today = getToday()
+  const [view, setView] = useState('Dashboard')
   const [habits, setHabits] = useState<Habit[]>(initialHabits)
-  const [logs, setLogs] = useState<Logs>({ water: 5, steps: 4200, read: 12, sleep: 6.5 })
+  const [dailyLogs, setDailyLogs] = useState<DailyLogs>({ [today]: defaultLogs })
+  const logs = dailyLogs[today] || {}
   const [streak, setStreak] = useState(7)
   const [toast, setToast] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -69,13 +74,14 @@ export default function Page() {
     try {
       const saved = JSON.parse(localStorage.getItem('healthybuddy') || '{}')
       if (saved.habits) setHabits(saved.habits)
-      if (saved.logs) setLogs(saved.logs)
+      if (saved.dailyLogs) setDailyLogs(saved.dailyLogs)
+      else if (saved.logs) setDailyLogs({ [today]: saved.logs })
       if (saved.streak) setStreak(saved.streak)
     } catch {}
   }, [])
   useEffect(() => {
-    localStorage.setItem('healthybuddy', JSON.stringify({ habits, logs, streak }))
-  }, [habits, logs, streak])
+    localStorage.setItem('healthybuddy', JSON.stringify({ habits, dailyLogs, streak }))
+  }, [habits, dailyLogs, streak])
   useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(''), 2800)
@@ -86,18 +92,18 @@ export default function Page() {
   const completed = enabledHabits.filter((habit) => (logs[habit.id] || 0) >= habit.goal).length
   const overall = enabledHabits.length ? Math.round((completed / enabledHabits.length) * 100) : 0
   const addAmount = (habit: Habit, amount: number) => {
-    setLogs((prev) => ({ ...prev, [habit.id]: Math.max(0, (prev[habit.id] || 0) + amount) }))
+    setDailyLogs((prev) => ({ ...prev, [today]: { ...(prev[today] || {}), [habit.id]: Math.max(0, (prev[today]?.[habit.id] || 0) + amount) } }))
     if ((logs[habit.id] || 0) + amount >= habit.goal) {
       setToast(`${habit.name} complete. Nice work.`)
       setStreak((value) => Math.max(value, 8))
     }
   }
   const toggleHabit = (id: string) => setHabits((items) => items.map((habit) => habit.id === id ? { ...habit, enabled: !habit.enabled } : habit))
-  const deleteHabit = (id: string) => { setHabits((items) => items.filter((habit) => habit.id !== id)); setLogs((items) => { const next = { ...items }; delete next[id]; return next }); setToast('Habit deleted.') }
+  const deleteHabit = (id: string) => { setHabits((items) => items.filter((habit) => habit.id !== id)); setDailyLogs((items) => Object.fromEntries(Object.entries(items).map(([date, dayLogs]) => { const next = { ...dayLogs }; delete next[id]; return [date, next] }))); setToast('Habit deleted.') }
   const createHabit = () => {
     if (!newHabit.trim()) return
     const habit = { id: `custom-${Date.now()}`, name: newHabit.trim(), icon: 'leaf', color: 'mint', goal: 1, unit: 'time', schedule: 'Daily', enabled: true }
-    setHabits((items) => [...items, habit]); setLogs((items) => ({ ...items, [habit.id]: 0 })); setNewHabit(''); setToast('New habit added.')
+    setHabits((items) => [...items, habit]); setDailyLogs((items) => ({ ...items, [today]: { ...(items[today] || {}), [habit.id]: 0 } })); setNewHabit(''); setToast('New habit added.')
   }
   const requestNotifications = async () => {
     if ('Notification' in window) {
@@ -117,7 +123,7 @@ export default function Page() {
         </header>
         <div className="page-wrap">
           <div className="cover"><div className="cover-pattern" /><div className="cover-copy"><span className="eyebrow">PERSONAL WELLNESS / 2026</span><h1>Make space for<br /><em>feeling good.</em></h1><p>Small steps, steady days, a healthier you.</p></div><div className="sun-mark"><Sun /></div></div>
-          {view === 'Today' && <TodayView habits={enabledHabits} logs={logs} overall={overall} streak={streak} addAmount={addAmount} requestNotifications={requestNotifications} setToast={setToast} setView={setView} />}
+          {view === 'Dashboard' && <TodayView habits={enabledHabits} logs={logs} overall={overall} streak={streak} addAmount={addAmount} requestNotifications={requestNotifications} setToast={setToast} setView={setView} />}
           {view === 'Manage habits' && <ManageView habits={habits} toggleHabit={toggleHabit} setHabits={setHabits} deleteHabit={deleteHabit} setToast={setToast} />}
           {view === 'Analytics' && <AnalyticsView habits={habits} logs={logs} streak={streak} />}
         </div>
@@ -128,7 +134,7 @@ export default function Page() {
 }
 
 function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
-  const items = [{ name: 'Today', icon: Home }, { name: 'Manage habits', icon: Settings }, { name: 'Analytics', icon: BarChart3 }]
+  const items = [{ name: 'Dashboard', icon: Home }, { name: 'Manage habits', icon: Settings }, { name: 'Analytics', icon: BarChart3 }]
   return <><aside className={`sidebar ${mobileOpen ? 'open' : ''}`}><div className="brand"><span className="brand-icon"><HeartPulse /></span><span>healthy<span>buddy</span></span><button className="icon-button close-menu" onClick={() => setMobileOpen(false)}><X /></button></div><div className="workspace-label">MY WORKSPACE</div><nav>{items.map(({ name, icon: Icon }) => <button key={name} className={view === name ? 'active' : ''} onClick={() => setView(name)}><Icon />{name}<ChevronRight /></button>)}</nav><div className="sidebar-bottom"><div className="quote"><Sparkles /><p>Consistency beats intensity.</p><span>— your future self</span></div><button className="help"><CircleHelp /> Help & feedback</button><div className="user"><div className="avatar">AM</div><div><strong>Alex Morgan</strong><small>Personal account</small></div><MoreHorizontal /></div></div></aside>{mobileOpen && <button className="scrim" onClick={() => setMobileOpen(false)} aria-label="Close menu" />}</>
 }
 
@@ -139,7 +145,7 @@ function TodayView({ habits, logs, overall, streak, addAmount, requestNotificati
 function HabitCard({ habit, value, addAmount }: any) {
   const Icon = iconMap[habit.icon] || Leaf; const percentage = Math.round((value / habit.goal) * 100); const complete = value >= habit.goal
   const increment = habit.goal >= 1000 ? 500 : habit.unit === 'minutes' ? 5 : 1
-  return <article className={`habit-card ${habit.color} ${complete ? 'complete' : ''}`}><div className="habit-top"><span className="habit-icon"><Icon /></span><button className="more-button"><MoreHorizontal /></button></div><div className="habit-copy"><h4>{habit.name}</h4><p>{complete ? 'Complete for today' : habit.schedule}</p></div><div className="habit-progress"><div className="bar"><span style={{ width: `${Math.min(100, percentage)}%` }} /></div><strong>{value.toLocaleString()} <small>/ {habit.goal.toLocaleString()} {habit.unit}</small></strong></div><div className="habit-controls"><button onClick={() => addAmount(habit, -increment)} disabled={value <= 0} aria-label={`Decrease ${habit.name}`}><Minus /></button><button onClick={() => addAmount(habit, increment)} aria-label={`Increase ${habit.name}`}><Plus /></button>{complete && <span className="done"><Check /> Goal reached</span>}</div></article>
+  return <article className={`habit-card ${habit.color} ${complete ? 'complete' : ''}`}><div className="habit-top"><span className="habit-icon"><Icon /></span></div><div className="habit-copy"><h4>{habit.name}</h4><p>{complete ? 'Complete for today' : habit.schedule}</p></div><div className="habit-progress"><div className="bar"><span style={{ width: `${Math.min(100, percentage)}%` }} /></div><strong>{value.toLocaleString()} <small>/ {habit.goal.toLocaleString()} {habit.unit}</small></strong></div><div className="habit-controls"><button onClick={() => addAmount(habit, -increment)} disabled={value <= 0} aria-label={`Decrease ${habit.name}`}><Minus /></button><button onClick={() => addAmount(habit, increment)} aria-label={`Increase ${habit.name}`}><Plus /></button>{complete && <span className="done"><Check /> Goal reached</span>}</div></article>
 }
 
 function ProgressRing({ value }: { value: number }) { const radius = 43; const circumference = 2 * Math.PI * radius; return <div className="progress-ring"><svg viewBox="0 0 110 110"><circle className="ring-track" cx="55" cy="55" r={radius} /><circle className="ring-value" cx="55" cy="55" r={radius} strokeDasharray={circumference} strokeDashoffset={circumference - circumference * value / 100} /></svg><span>{value}%</span></div> }
