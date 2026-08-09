@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'HealthyBuddy — Make space for feeling good',
   description: 'A gentle daily wellness tracker for building healthy habits that stick.',
   generator: 'v0.app',
+  icons: { icon: '/hb-logo.png', apple: '/hb-logo.png' },
 }
 
 export const viewport: Viewport = {

@@ -44,13 +44,12 @@ type Habit = {
 type Logs = Record<string, number>
 type DailyLogs = Record<string, Logs>
 
-const defaultLogs: Logs = { water: 5, steps: 4200, read: 12, sleep: 6.5 }
+const defaultLogs: Logs = { water: 0, exercise: 0, walking: 0 }
 
 const initialHabits: Habit[] = [
-  { id: 'water', name: 'Drink water', icon: 'droplets', color: 'aqua', goal: 8, unit: 'glasses', schedule: 'Every 2 hours', enabled: true },
-  { id: 'steps', name: 'Take a walk', icon: 'steps', color: 'coral', goal: 6000, unit: 'steps', schedule: 'Daily', enabled: true },
-  { id: 'read', name: 'Read a book', icon: 'book', color: 'lavender', goal: 20, unit: 'minutes', schedule: 'Daily at 9:00 PM', enabled: true },
-  { id: 'sleep', name: 'Sleep well', icon: 'moon', color: 'peach', goal: 8, unit: 'hours', schedule: 'Daily at 10:30 PM', enabled: true },
+  { id: 'water', name: 'Drinking water', icon: 'droplets', color: 'aqua', goal: 8, unit: 'glasses', schedule: 'Daily', enabled: true },
+  { id: 'exercise', name: 'Exercise', icon: 'dumbbell', color: 'coral', goal: 1, unit: 'set', schedule: 'Daily', enabled: true },
+  { id: 'walking', name: 'Walking', icon: 'steps', color: 'mint', goal: 1, unit: 'km', schedule: 'Daily', enabled: true },
 ]
 
 const iconMap: Record<string, any> = { droplets: Droplets, steps: Activity, book: BookOpen, moon: Moon, leaf: Leaf, dumbbell: Dumbbell }
@@ -72,6 +71,12 @@ export default function Page() {
 
   useEffect(() => {
     try {
+      const resetKey = 'healthybuddy-production-reset-v2'
+      if (process.env.NODE_ENV === 'production' && localStorage.getItem(resetKey) !== 'done') {
+        localStorage.removeItem('healthybuddy')
+        localStorage.setItem(resetKey, 'done')
+        return
+      }
       const saved = JSON.parse(localStorage.getItem('healthybuddy') || '{}')
       if (saved.habits) setHabits(saved.habits)
       if (saved.dailyLogs) setDailyLogs(saved.dailyLogs)
@@ -119,7 +124,7 @@ export default function Page() {
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu /></button>
           <div className="crumb"><span>Workspace</span><ChevronRight /><strong>{view}</strong></div>
-          <div className="top-actions"><button className="icon-button" onClick={() => setToast('No new updates today.')} aria-label="Notifications"><Bell /><i /></button><div className="avatar">AM</div></div>
+          <div className="top-actions"><button className="icon-button" onClick={() => setToast('No new updates today.')} aria-label="Notifications"><Bell /><i /></button><div className="avatar">B</div></div>
         </header>
         <div className="page-wrap">
           <div className="cover"><div className="cover-pattern" /><div className="cover-copy"><span className="eyebrow">PERSONAL WELLNESS / 2026</span><h1>Make space for<br /><em>feeling good.</em></h1><p>Small steps, steady days, a healthier you.</p></div><div className="sun-mark"><Sun /></div></div>
@@ -135,11 +140,11 @@ export default function Page() {
 
 function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
   const items = [{ name: 'Dashboard', icon: Home }, { name: 'Manage habits', icon: Settings }, { name: 'Analytics', icon: BarChart3 }]
-  return <><aside className={`sidebar ${mobileOpen ? 'open' : ''}`}><div className="brand"><span className="brand-icon"><HeartPulse /></span><span>healthy<span>buddy</span></span><button className="icon-button close-menu" onClick={() => setMobileOpen(false)}><X /></button></div><div className="workspace-label">MY WORKSPACE</div><nav>{items.map(({ name, icon: Icon }) => <button key={name} className={view === name ? 'active' : ''} onClick={() => setView(name)}><Icon />{name}<ChevronRight /></button>)}</nav><div className="sidebar-bottom"><div className="quote"><Sparkles /><p>Consistency beats intensity.</p><span>— your future self</span></div><button className="help"><CircleHelp /> Help & feedback</button><div className="user"><div className="avatar">AM</div><div><strong>Alex Morgan</strong><small>Personal account</small></div><MoreHorizontal /></div></div></aside>{mobileOpen && <button className="scrim" onClick={() => setMobileOpen(false)} aria-label="Close menu" />}</>
+  return <><aside className={`sidebar ${mobileOpen ? 'open' : ''}`}><div className="brand"><span className="brand-icon"><img src="/hb-logo.png" alt="HB" /></span><span>HealthBuddy</span><button className="icon-button close-menu" onClick={() => setMobileOpen(false)}><X /></button></div><div className="workspace-label">MY WORKSPACE</div><nav>{items.map(({ name, icon: Icon }) => <button key={name} className={view === name ? 'active' : ''} onClick={() => setView(name)}><Icon />{name}<ChevronRight /></button>)}</nav><div className="sidebar-bottom"><div className="quote"><Sparkles /><p>Consistency beats intensity.</p><span>— your future self</span></div><button className="help"><CircleHelp /> Help & feedback</button><div className="user"><div className="avatar">B</div><div><strong>Buddy</strong><small>Personal account</small></div><MoreHorizontal /></div></div></aside>{mobileOpen && <button className="scrim" onClick={() => setMobileOpen(false)} aria-label="Close menu" />}</>
 }
 
 function TodayView({ habits, logs, overall, streak, addAmount, requestNotifications, setToast, setView }: any) {
-  return <div className="dashboard"><div className="welcome-row"><div><p className="eyebrow coral-text">{formatDate().toUpperCase()}</p><h2>Good morning, Alex</h2><p className="subtle">A little progress is still progress. Let&apos;s make today count.</p></div><button className="reminder-button" onClick={requestNotifications}><Bell /> Turn on reminders</button></div><div className="overview-grid"><div className="progress-card"><div><span className="card-label">TODAY&apos;S PROGRESS</span><strong>{overall}%</strong><p>{overall === 100 ? 'All habits complete.' : `${habits.length - habits.filter((h: Habit) => (logs[h.id] || 0) >= h.goal).length} habits left to go`}</p></div><ProgressRing value={overall} /></div><div className="streak-card"><div className="streak-icon"><Flame /></div><div><span className="card-label">CURRENT STREAK</span><strong>{streak} days</strong><p>Keep the momentum going.</p></div><div className="streak-dots">{[1, 2, 3, 4, 5, 6, 7].map((n) => <i key={n} className={n <= 5 ? 'filled' : ''} />)}</div></div></div><div className="section-heading"><div><h3>Today&apos;s habits</h3><p>{habits.length} routines in your daily rhythm</p></div><button className="text-button" onClick={() => setView('Manage habits')}>Manage habits <ChevronRight /></button></div><div className="habits-grid">{habits.map((habit: Habit) => <HabitCard key={habit.id} habit={habit} value={logs[habit.id] || 0} addAmount={addAmount} />)}</div></div>
+  return <div className="dashboard"><div className="welcome-row"><div><p className="eyebrow coral-text">{formatDate().toUpperCase()}</p><h2>Good morning, Buddy</h2><p className="subtle">A little progress is still progress. Let&apos;s make today count.</p></div><button className="reminder-button" onClick={requestNotifications}><Bell /> Turn on reminders</button></div><div className="overview-grid"><div className="progress-card"><div><span className="card-label">TODAY&apos;S PROGRESS</span><strong>{overall}%</strong><p>{overall === 100 ? 'All habits complete.' : `${habits.length - habits.filter((h: Habit) => (logs[h.id] || 0) >= h.goal).length} habits left to go`}</p></div><ProgressRing value={overall} /></div><div className="streak-card"><div className="streak-icon"><Flame /></div><div><span className="card-label">CURRENT STREAK</span><strong>{streak} days</strong><p>Keep the momentum going.</p></div><div className="streak-dots">{[1, 2, 3, 4, 5, 6, 7].map((n) => <i key={n} className={n <= 5 ? 'filled' : ''} />)}</div></div></div><div className="section-heading"><div><h3>Today&apos;s habits</h3><p>{habits.length} routines in your daily rhythm</p></div><button className="text-button" onClick={() => setView('Manage habits')}>Manage habits <ChevronRight /></button></div><div className="habits-grid">{habits.map((habit: Habit) => <HabitCard key={habit.id} habit={habit} value={logs[habit.id] || 0} addAmount={addAmount} />)}</div></div>
 }
 
 function HabitCard({ habit, value, addAmount }: any) {
