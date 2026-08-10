@@ -55,6 +55,20 @@ const initialHabits: Habit[] = [
 const iconMap: Record<string, any> = { droplets: Droplets, steps: Activity, book: BookOpen, moon: Moon, leaf: Leaf, dumbbell: Dumbbell }
 
 function getToday() { return new Date().toISOString().slice(0, 10) }
+function isDayComplete(date: string, habits: Habit[], dailyLogs: DailyLogs) {
+  const logs = dailyLogs[date] || {}
+  const enabled = habits.filter((habit) => habit.enabled)
+  return enabled.length > 0 && enabled.every((habit) => (logs[habit.id] || 0) >= habit.goal)
+}
+function calculateCurrentStreak(habits: Habit[], dailyLogs: DailyLogs) {
+  let streak = 0
+  const date = new Date()
+  while (isDayComplete(date.toISOString().slice(0, 10), habits, dailyLogs)) {
+    streak += 1
+    date.setDate(date.getDate() - 1)
+  }
+  return streak
+}
 function formatDate() { return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()) }
 
 export default function Page() {
@@ -63,7 +77,8 @@ export default function Page() {
   const [habits, setHabits] = useState<Habit[]>(initialHabits)
   const [dailyLogs, setDailyLogs] = useState<DailyLogs>({ [today]: defaultLogs })
   const logs = dailyLogs[today] || {}
-  const [streak, setStreak] = useState(7)
+  const [streak, setStreak] = useState(0)
+  const [bestStreak, setBestStreak] = useState(0)
   const [toast, setToast] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
@@ -71,7 +86,7 @@ export default function Page() {
 
   useEffect(() => {
     try {
-      const resetKey = 'healthybuddy-production-reset-v3'
+      const resetKey = 'healthybuddy-production-reset-v5'
       if (process.env.NODE_ENV === 'production' && localStorage.getItem(resetKey) !== 'done') {
         localStorage.removeItem('healthybuddy')
         localStorage.setItem(resetKey, 'done')
@@ -82,11 +97,12 @@ export default function Page() {
       if (saved.dailyLogs) setDailyLogs(saved.dailyLogs)
       else if (saved.logs) setDailyLogs({ [today]: saved.logs })
       if (saved.streak) setStreak(saved.streak)
+      if (saved.bestStreak) setBestStreak(saved.bestStreak)
     } catch {}
   }, [])
   useEffect(() => {
-    localStorage.setItem('healthybuddy', JSON.stringify({ habits, dailyLogs, streak }))
-  }, [habits, dailyLogs, streak])
+    localStorage.setItem('healthybuddy', JSON.stringify({ habits, dailyLogs, streak, bestStreak }))
+  }, [habits, dailyLogs, streak, bestStreak])
   useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(''), 2800)
@@ -95,12 +111,16 @@ export default function Page() {
 
   const enabledHabits = habits.filter((habit) => habit.enabled)
   const completed = enabledHabits.filter((habit) => (logs[habit.id] || 0) >= habit.goal).length
+  const calculatedStreak = calculateCurrentStreak(habits, dailyLogs)
+  useEffect(() => {
+    setStreak(calculatedStreak)
+    setBestStreak((value) => Math.max(value, calculatedStreak))
+  }, [calculatedStreak])
   const overall = enabledHabits.length ? Math.round((completed / enabledHabits.length) * 100) : 0
   const addAmount = (habit: Habit, amount: number) => {
     setDailyLogs((prev) => ({ ...prev, [today]: { ...(prev[today] || {}), [habit.id]: Math.max(0, (prev[today]?.[habit.id] || 0) + amount) } }))
     if ((logs[habit.id] || 0) + amount >= habit.goal) {
       setToast(`${habit.name} complete. Nice work.`)
-      setStreak((value) => Math.max(value, 8))
     }
   }
   const toggleHabit = (id: string) => setHabits((items) => items.map((habit) => habit.id === id ? { ...habit, enabled: !habit.enabled } : habit))
@@ -128,9 +148,9 @@ export default function Page() {
         </header>
         <div className="page-wrap">
           <div className="cover"><div className="cover-pattern" /><div className="cover-copy"><span className="eyebrow">PERSONAL WELLNESS / 2026</span><h1>Make space for<br /><em>feeling good.</em></h1><p>Small steps, steady days, a healthier you.</p></div><div className="sun-mark"><Sun /></div></div>
-          {view === 'Dashboard' && <TodayView habits={enabledHabits} logs={logs} overall={overall} streak={streak} addAmount={addAmount} requestNotifications={requestNotifications} setToast={setToast} setView={setView} />}
+          {view === 'Dashboard' && <TodayView habits={enabledHabits} logs={logs} overall={overall} streak={streak} bestStreak={bestStreak} addAmount={addAmount} requestNotifications={requestNotifications} setToast={setToast} setView={setView} />}
           {view === 'Manage habits' && <ManageView habits={habits} toggleHabit={toggleHabit} setHabits={setHabits} deleteHabit={deleteHabit} setToast={setToast} />}
-          {view === 'Analytics' && <AnalyticsView habits={habits} logs={logs} streak={streak} />}
+          {view === 'Analytics' && <AnalyticsView habits={habits} dailyLogs={dailyLogs} streak={streak} bestStreak={bestStreak} />}
         </div>
       </section>
       {toast && <div className="toast"><Check />{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X /></button></div>}
@@ -143,7 +163,7 @@ function Sidebar({ view, setView, mobileOpen, setMobileOpen }: any) {
   return <><aside className={`sidebar ${mobileOpen ? 'open' : ''}`}><div className="brand"><span className="brand-icon"><img src="/hb-logo.png" alt="HB" /></span><span>HealthBuddy</span><button className="icon-button close-menu" onClick={() => setMobileOpen(false)}><X /></button></div><div className="workspace-label">MY WORKSPACE</div><nav>{items.map(({ name, icon: Icon }) => <button key={name} className={view === name ? 'active' : ''} onClick={() => setView(name)}><Icon />{name}<ChevronRight /></button>)}</nav><div className="sidebar-bottom"><div className="quote"><Sparkles /><p>Consistency beats intensity.</p><span>— your future self</span></div><button className="help"><CircleHelp /> Help & feedback</button><div className="user"><div className="avatar">B</div><div><strong>Buddy</strong><small>Personal account</small></div><MoreHorizontal /></div></div></aside>{mobileOpen && <button className="scrim" onClick={() => setMobileOpen(false)} aria-label="Close menu" />}</>
 }
 
-function TodayView({ habits, logs, overall, streak, addAmount, requestNotifications, setToast, setView }: any) {
+function TodayView({ habits, logs, overall, streak, bestStreak, addAmount, requestNotifications, setToast, setView }: any) {
   return <div className="dashboard"><div className="welcome-row"><div><p className="eyebrow coral-text">{formatDate().toUpperCase()}</p><h2>Good morning, Buddy</h2><p className="subtle">A little progress is still progress. Let&apos;s make today count.</p></div><button className="reminder-button" onClick={requestNotifications}><Bell /> Turn on reminders</button></div><div className="overview-grid"><div className="progress-card"><div><span className="card-label">TODAY&apos;S PROGRESS</span><strong>{overall}%</strong><p>{overall === 100 ? 'All habits complete.' : `${habits.length - habits.filter((h: Habit) => (logs[h.id] || 0) >= h.goal).length} habits left to go`}</p></div><ProgressRing value={overall} /></div><div className="streak-card"><div className="streak-icon"><Flame /></div><div><span className="card-label">CURRENT STREAK</span><strong>{streak} days</strong><p>Keep the momentum going.</p></div><div className="streak-dots">{[1, 2, 3, 4, 5, 6, 7].map((n) => <i key={n} className={n <= 5 ? 'filled' : ''} />)}</div></div></div><div className="section-heading"><div><h3>Today&apos;s habits</h3><p>{habits.length} routines in your daily rhythm</p></div><button className="text-button" onClick={() => setView('Manage habits')}>Manage habits <ChevronRight /></button></div><div className="habits-grid">{habits.map((habit: Habit) => <HabitCard key={habit.id} habit={habit} value={logs[habit.id] || 0} addAmount={addAmount} />)}</div></div>
 }
 
@@ -172,9 +192,18 @@ function ManageView({ habits, toggleHabit, setHabits, deleteHabit, setToast }: a
   return <div className="manage-view"><div className="section-heading"><div><p className="eyebrow coral-text">YOUR ROUTINES</p><h2>Manage habits</h2><p className="subtle">Shape your day around the things that help you feel your best.</p></div></div><div className="manage-list">{habits.map((habit: Habit) => <div className={`manage-item ${!habit.enabled ? 'disabled' : ''}`} key={habit.id}><span className={`habit-icon ${habit.color}`}>{(() => { const HabitIcon = iconMap[habit.icon] || Leaf; return <HabitIcon /> })()}</span><div className="manage-copy"><h4>{habit.name}</h4><p>Goal: {habit.goal.toLocaleString()} {habit.unit} · {habit.schedule}</p></div><button className="edit-button" onClick={() => beginEdit(habit)}><Pencil /> Edit</button><button className="delete-button" onClick={() => window.confirm(`Delete ${habit.name}?`) && deleteHabit(habit.id)} aria-label={`Delete ${habit.name}`}><X /></button><button className={`toggle ${habit.enabled ? 'on' : ''}`} onClick={() => toggleHabit(habit.id)} aria-label={`Toggle ${habit.name}`}><span /></button></div>)}</div><div className="add-habit"><div><strong>{editingId ? 'Edit habit' : 'Add a new habit'}</strong><p>Set a goal and choose when it should repeat.</p></div><div className="habit-form"><input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Habit name" /><input type="number" min="1" value={draft.goal} onChange={(e) => setDraft({ ...draft, goal: e.target.value })} placeholder="Goal" /><input value={draft.unit} onChange={(e) => setDraft({ ...draft, unit: e.target.value })} placeholder="Unit (minutes, glasses...)" /><select value={draft.frequency} onChange={(e) => setDraft({ ...draft, frequency: e.target.value })}><option>Daily</option><option>Weekly</option><option>Monthly</option></select>{draft.frequency === 'Weekly' && <div className="day-picker">{days.map((day) => <button type="button" key={day} className={draft.days.includes(day) ? 'selected' : ''} onClick={() => setDraft({ ...draft, days: draft.days.includes(day) ? draft.days.filter((item) => item !== day) : [...draft.days, day] })}>{day}</button>)}</div>}<div className="form-actions"><button className="primary-action" onClick={save}>{editingId ? 'Save changes' : 'Add habit'}</button>{editingId && <button className="cancel-action" onClick={reset}>Cancel</button>}</div></div></div></div>
 }
 
-function AnalyticsView({ habits, logs, streak }: any) {
- const completedToday = habits.filter((habit: Habit) => (logs[habit.id] || 0) >= habit.goal).length
- const consistency = habits.length ? Math.round((completedToday / habits.length) * 100) : 0
- const days = useMemo(() => Array.from({ length: 7 }, (_, index) => index === 6 ? consistency : 0), [consistency])
-  return <div className="analytics-view"><div className="section-heading"><div><p className="eyebrow coral-text">LOOKING BACK</p><h2>Your progress</h2><p className="subtle">Patterns that show how small choices add up.</p></div><button className="date-filter">Last 7 days <ChevronRight /></button></div><div className="metric-grid"><div className="metric"><span className="metric-icon coral"><Flame /></span><div><small>BEST STREAK</small><strong>{streak} days</strong><p>Personal best</p></div></div><div className="metric"><span className="metric-icon mint"><Check /></span><div><small>HABITS COMPLETED</small><strong>{completedToday}</strong><p>Completed today</p></div></div><div className="metric"><span className="metric-icon lavender"><Trophy /></span><div><small>CONSISTENCY</small><strong>{consistency}%</strong><p>Current consistency</p></div></div></div><div className="chart-card"><div className="chart-heading"><div><h3>Weekly consistency</h3><p>How often you completed your habits</p></div><span className="chart-legend"><i /> Completed</span></div><div className="chart"><div className="y-axis"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div><div className="chart-area"><div className="grid-lines">{[1, 2, 3, 4].map((n) => <i key={n} />)}</div><svg viewBox="0 0 700 220" preserveAspectRatio="none"><path d="M0 126 C55 106, 70 70, 116 75 S180 142, 233 110 S300 42, 350 66 S416 108, 466 72 S525 38, 583 54 S640 92, 700 46" fill="none" stroke="currentColor" strokeWidth="4" /><path d="M0 126 C55 106, 70 70, 116 75 S180 142, 233 110 S300 42, 350 66 S416 108, 466 72 S525 38, 583 54 S640 92, 700 46 L700 220 L0 220Z" fill="currentColor" opacity=".1" /></svg><div className="x-axis"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div></div></div></div><div className="badges" hidden><div><h3>Milestones</h3><p>Little wins worth celebrating.</p></div><div className="badge-row"><div className="badge"><span><Flame /></span><strong>First flame</strong><small>7 day streak</small></div><div className="badge locked"><span><Trophy /></span><strong>On a roll</strong><small>14 day streak</small></div><div className="badge"><span><HeartPulse /></span><strong>Full circle</strong><small>30 habits done</small></div></div></div></div>
+function AnalyticsView({ habits, dailyLogs, streak, bestStreak }: any) {
+  const [range, setRange] = useState(7)
+  const dates = useMemo(() => Array.from({ length: range }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - (range - 1 - index)); return date.toISOString().slice(0, 10) }), [range])
+  const rangeLogs = dates.map((date) => dailyLogs[date] || {})
+  const completedTotal = rangeLogs.reduce((total: number, logs: Logs) => total + habits.filter((habit: Habit) => (logs[habit.id] || 0) >= habit.goal).length, 0)
+  const completedToday = completedTotal
+  const consistency = habits.length && range ? Math.round((completedTotal / (habits.length * range)) * 100) : 0
+  const dailyCompletion = (logs: Logs) => habits.length ? Math.round((habits.filter((habit: Habit) => (logs[habit.id] || 0) >= habit.goal).length / habits.length) * 100) : 0
+  const chartLabels = useMemo(() => range === 1 ? Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`) : dates.map((date) => { const [, month, day] = date.split('-'); return `${month}/${day}` }), [range, dates])
+  const days = useMemo(() => range === 1 ? Array.from({ length: 24 }, (_, hour) => hour === new Date().getHours() ? dailyCompletion(dailyLogs[getToday()] || {}) : 0) : rangeLogs.map(dailyCompletion), [range, dailyLogs, rangeLogs, habits])
+  const chartPoints = useMemo(() => days.map((value, index) => { const x = days.length === 1 ? 350 : (index / (days.length - 1)) * 700; const y = 220 - (value / 100) * 190; return `${x.toFixed(1)} ${y.toFixed(1)}` }).join(' L '), [days])
+  const chartLine = `M${chartPoints || '0 220'}`
+  const chartFill = `${chartLine} L700 220 L0 220Z`
+  return <div className="analytics-view"><div className="section-heading"><div><p className="eyebrow coral-text">LOOKING BACK</p><h2>Your progress</h2><p className="subtle">Patterns that show how small choices add up.</p></div><div className="date-filter" role="group" aria-label="Progress range">{[1, 7, 30].map((days) => <button key={days} className={`range-option ${range === days ? 'active' : ''}`} onClick={() => setRange(days)}><strong>{days}</strong><span>day{days === 1 ? '' : 's'}</span></button>)}</div></div><div className="metric-grid"><div className="metric"><span className="metric-icon coral"><Flame /></span><div><small>BEST STREAK</small><strong>{bestStreak} days</strong><p>Personal best</p></div></div><div className="metric"><span className="metric-icon mint"><Check /></span><div><small>HABITS COMPLETED</small><strong>{completedToday}</strong><p>Completed in {range} day{range === 1 ? '' : 's'}</p></div></div><div className="metric"><span className="metric-icon lavender"><Trophy /></span><div><small>CONSISTENCY</small><strong>{consistency}%</strong><p>Current consistency</p></div></div></div><div className="chart-card"><div className="chart-heading"><div><h3>{range}-day consistency</h3><p>How often you completed your habits</p></div><span className="chart-legend"><i /> Completed</span></div><div className="chart"><div className="y-axis"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div><div className="chart-area"><div className="grid-lines">{[1, 2, 3, 4].map((n) => <i key={n} />)}</div><svg viewBox="0 0 700 220" preserveAspectRatio="none"><path d={chartLine} fill="none" stroke="currentColor" strokeWidth="4" /><path d={chartFill} fill="currentColor" opacity=".1" /></svg><div className={`x-axis x-axis-${range}`}>{chartLabels.map((label) => <span key={label}>{label}</span>)}</div></div></div></div><div className="badges" hidden><div><h3>Milestones</h3><p>Little wins worth celebrating.</p></div><div className="badge-row"><div className="badge"><span><Flame /></span><strong>First flame</strong><small>7 day streak</small></div><div className="badge locked"><span><Trophy /></span><strong>On a roll</strong><small>14 day streak</small></div><div className="badge"><span><HeartPulse /></span><strong>Full circle</strong><small>30 habits done</small></div></div></div></div>
 }
