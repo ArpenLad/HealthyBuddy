@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   BarChart3,
@@ -80,6 +80,9 @@ export default function Page() {
   const [streak, setStreak] = useState(0)
   const [bestStreak, setBestStreak] = useState(0)
   const [toast, setToast] = useState('')
+  const [notifications, setNotifications] = useState<{ id: string; tone: 'info' | 'warning' | 'success'; title: string; body: string }[]>([])
+  const lastReminderRef = useRef('')
+  const previousStreakRef = useRef(0)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [newHabit, setNewHabit] = useState('')
@@ -108,6 +111,26 @@ export default function Page() {
     const timer = setTimeout(() => setToast(''), 2800)
     return () => clearTimeout(timer)
   }, [toast])
+  const notify = (tone: 'info' | 'warning' | 'success', title: string, body: string) => {
+    const id = `${tone}-${Date.now()}`
+    setNotifications((items) => [...items, { id, tone, title, body }])
+    if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body })
+  }
+  useEffect(() => {
+    const checkReminders = () => {
+      const hour = new Date().getHours()
+      if (hour < 8 || hour >= 22) return
+      const incomplete = habits.filter((habit) => habit.enabled && (logs[habit.id] || 0) < habit.goal)
+      const slot = `${today}-${Math.floor(hour / 2)}`
+      if (incomplete.length && lastReminderRef.current !== slot) {
+        lastReminderRef.current = slot
+        notify('warning', 'Habits waiting for you', incomplete.map((habit) => habit.name).join(', ') + ' still need attention.')
+      }
+    }
+    checkReminders()
+    const timer = window.setInterval(checkReminders, 2 * 60 * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [habits, logs, today])
 
   const enabledHabits = habits.filter((habit) => habit.enabled)
   const completed = enabledHabits.filter((habit) => (logs[habit.id] || 0) >= habit.goal).length
@@ -115,6 +138,12 @@ export default function Page() {
   useEffect(() => {
     setStreak(calculatedStreak)
     setBestStreak((value) => Math.max(value, calculatedStreak))
+    if (calculatedStreak > previousStreakRef.current && calculatedStreak > 0) {
+      const message = `You started a new ${calculatedStreak}-day streak. Keep it going!`
+      setNotifications((items) => [...items, { id: `streak-${calculatedStreak}-${Date.now()}`, tone: 'success', title: 'New streak created', body: message }])
+      if ('Notification' in window && Notification.permission === 'granted' && new Date().getHours() >= 8 && new Date().getHours() < 22) new Notification('New streak created', { body: message })
+    }
+    previousStreakRef.current = calculatedStreak
   }, [calculatedStreak])
   const overall = enabledHabits.length ? Math.round((completed / enabledHabits.length) * 100) : 0
   const addAmount = (habit: Habit, amount: number) => {
@@ -153,6 +182,7 @@ export default function Page() {
           {view === 'Analytics' && <AnalyticsView habits={habits} dailyLogs={dailyLogs} streak={streak} bestStreak={bestStreak} />}
         </div>
       </section>
+      <div className="notification-stack" aria-live="polite">{notifications.map((notification) => <div className={`notification-alert ${notification.tone}`} key={notification.id}><span className="notification-symbol">{notification.tone === 'success' ? <Check /> : notification.tone === 'warning' ? '!' : 'i'}</span><div><strong>{notification.title}</strong><p>{notification.body}</p><button className="notification-link" onClick={() => setNotifications((items) => items.filter((item) => item.id !== notification.id))}>Learn more</button></div><button className="notification-close" onClick={() => setNotifications((items) => items.filter((item) => item.id !== notification.id))} aria-label="Dismiss notification"><X /></button></div>)}</div>
       {toast && <div className="toast"><Check />{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X /></button></div>}
     </main>
   )
