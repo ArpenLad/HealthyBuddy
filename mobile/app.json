@@ -6,7 +6,19 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "healthybuddy",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/hb-logo.png",
+          "color": "#E86F51"
+        }
+      ],
+      "expo-font"
+    ],
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/hb-logo.png",
